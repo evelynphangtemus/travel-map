@@ -36,13 +36,14 @@
   .filters{display:flex;gap:6px;padding:0 14px 12px}
   .chip{flex:1;text-align:center;padding:7px;border-radius:8px;background:var(--panel2);border:1px solid var(--line);color:var(--muted);cursor:pointer;font-size:12px;font-weight:600}
   .chip.active{color:var(--text);border-color:var(--accent)}
-  #list{overflow-y:auto;padding:12px 14px 40px;flex:1}
+  #list{overflow-y:auto;padding:12px 14px 40px;flex:1;scroll-snap-type:y mandatory;scroll-behavior:smooth}
   .empty{color:var(--muted);text-align:center;padding:40px 10px;font-size:13px;line-height:1.6}
-  .card{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:13px;margin-bottom:12px;position:relative}
+  .card{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px;position:relative;scroll-snap-align:start;scroll-snap-stop:always;min-height:var(--cardH,auto)}
+  .card-progress{position:sticky;top:0;z-index:3;text-align:center;font-size:11px;color:var(--muted);background:var(--panel);padding:4px 0 8px;margin:-12px -14px 6px;border-bottom:1px solid var(--line)}
   .card .num{position:absolute;top:-9px;left:-9px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#06122a;z-index:2}
   .card.visited .num{background:var(--visited)}
   .card.bucketlist .num{background:var(--bucket)}
-  .card .photo{width:100%;height:150px;object-fit:cover;border-radius:9px;margin-bottom:10px;display:block;background:var(--bg)}
+  .card .photo{width:100%;height:210px;object-fit:cover;border-radius:9px;margin-bottom:10px;display:block;background:var(--bg)}
   .card .place{font-size:15px;font-weight:700;margin:0 0 2px}
   .card .country{font-size:12px;color:var(--muted)}
   .card .meta{display:flex;justify-content:space-between;align-items:center;margin:9px 0 8px;gap:8px}
@@ -57,6 +58,10 @@
   .saved-flash{color:var(--visited);font-size:11px;margin-left:6px;opacity:0;transition:opacity .2s}
   .saved-flash.show{opacity:1}
   #map{flex:1;height:100%}
+  /* Editing mode: hide the map, give the form the whole screen */
+  body.editing #map{display:none}
+  body.editing #sidebar{width:100%;max-width:100%}
+  body.editing .modal{width:720px}
   .pin{border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#06122a;border:2px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.5)}
   .pin.visited{background:var(--visited)}
   .pin.bucketlist{background:var(--bucket)}
@@ -141,6 +146,12 @@
       <label>Photo (one per card)</label>
       <input type="file" id="f_photo" accept="image/*">
       <img id="photoPreview" class="thumb-preview">
+    </div>
+    <div class="field"><label>Evelyn's memories</label>
+      <textarea id="f_evelyn" placeholder="Evelyn's notes..."></textarea>
+    </div>
+    <div class="field"><label>Damian's memories</label>
+      <textarea id="f_damian" placeholder="Damian's notes..."></textarea>
     </div>
     <div class="hint" id="geoHint">Tip: we look up the map location from the city + country automatically.</div>
     <div class="modal-actions">
@@ -268,12 +279,13 @@ function render(){
   const shown=cards.filter(c=>filter==='all'||c.status===filter).sort((a,b)=>(a.number||0)-(b.number||0));
   list.innerHTML='';
   if(!shown.length){ list.innerHTML=`<div class="empty">No places yet.<br>Click <b>+ Add place</b> to pin your first destination.</div>`; }
-  shown.forEach(c=>{
+  shown.forEach((c,idx)=>{
     const whenLabel=c.status==='visited'?'Visited':'Planned';
     const when=(c.month||c.year)?`${whenLabel}: ${c.month||''} ${c.year||''}`.trim():`${whenLabel}: —`;
     const el=document.createElement('div');
     el.className=`card ${c.status}`;
     el.innerHTML=`
+      <div class="card-progress">Destination ${idx+1} of ${shown.length} · scroll for the next</div>
       <div class="num">${c.number}</div>
       ${c.imageUrl?`<img class="photo" src="${esc(c.imageUrl)}" alt="">`:''}
       <div class="place">${esc(c.city)}</div>
@@ -299,8 +311,17 @@ function render(){
       </div>`;
     list.appendChild(el);
   });
+  // Make each card fill one screen so you review destinations one-by-one
+  const h=list.clientHeight;
+  document.documentElement.style.setProperty('--cardH', h>0?(h-16)+'px':'auto');
   renderMarkers();
 }
+// recompute the one-screen card height on window resize
+window.addEventListener('resize',()=>{
+  const list=document.getElementById('list');
+  const h=list.clientHeight;
+  document.documentElement.style.setProperty('--cardH', h>0?(h-16)+'px':'auto');
+});
 
 function renderMarkers(){
   Object.values(markers).forEach(m=>map.removeLayer(m));
@@ -340,14 +361,22 @@ function openCard(card){
   document.getElementById('f_month').value=card?.month||'';
   document.getElementById('f_year').value=card?.year||'';
   document.getElementById('f_by').value=card?.addedBy||'Evelyn';
+  document.getElementById('f_evelyn').value=card?.commentEvelyn||'';
+  document.getElementById('f_damian').value=card?.commentDamian||'';
   document.getElementById('f_photo').value='';
   const prev=document.getElementById('photoPreview');
   if(card?.imageUrl){ prev.src=card.imageUrl; prev.style.display='block'; } else { prev.style.display='none'; }
   document.getElementById('geoHint').textContent='Tip: we look up the map location from the city + country automatically.';
   updateWhenLabels();
+  document.body.classList.add('editing');            // hide the map while editing
   document.getElementById('cardOverlay').classList.add('show');
 }
-function closeCard(){ document.getElementById('cardOverlay').classList.remove('show'); editingId=null; pendingPhotoFile=null; }
+function closeCard(){
+  document.getElementById('cardOverlay').classList.remove('show');
+  document.body.classList.remove('editing');
+  editingId=null; pendingPhotoFile=null;
+  setTimeout(()=>map.invalidateSize(),150);          // let Leaflet re-measure after the map reappears
+}
 
 document.getElementById('f_photo').addEventListener('change',e=>{
   const f=e.target.files[0]; pendingPhotoFile=f||null;
@@ -363,6 +392,8 @@ async function saveCardHandler(){
   const month=document.getElementById('f_month').value;
   const year=document.getElementById('f_year').value.trim();
   const addedBy=document.getElementById('f_by').value;
+  const commentEvelyn=document.getElementById('f_evelyn').value;
+  const commentDamian=document.getElementById('f_damian').value;
 
   const existing=editingId?cards.find(c=>c.id===editingId):null;
   const btn=document.getElementById('saveCard'); btn.disabled=true; btn.textContent='Saving…';
@@ -377,7 +408,7 @@ async function saveCardHandler(){
     id:'c_'+Date.now()+'_'+Math.random().toString(36).slice(2,7),
     number:nextNumber(), commentEvelyn:'', commentDamian:'', imageUrl:null, createdAt:Date.now()
   };
-  Object.assign(card,{city,country,status,month,year,addedBy,lat,lng});
+  Object.assign(card,{city,country,status,month,year,addedBy,commentEvelyn,commentDamian,lat,lng});
 
   if(pendingPhotoFile){
     btn.textContent='Uploading photo…';
