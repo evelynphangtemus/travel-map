@@ -39,7 +39,7 @@
   .filters{display:flex;gap:6px;padding:0 14px 12px}
   .chip{flex:1;text-align:center;padding:7px;border-radius:8px;background:var(--panel2);border:1px solid var(--line);color:var(--muted);cursor:pointer;font-size:12px;font-weight:600}
   .chip.active{color:var(--text);border-color:var(--accent)}
-  #list{overflow-y:auto;padding:12px 14px 40px;flex:1;scroll-snap-type:y mandatory;scroll-behavior:smooth}
+  #list{overflow-y:auto;padding:12px 14px 40px;flex:1;scroll-snap-type:y mandatory}
   .empty{color:var(--muted);text-align:center;padding:40px 10px;font-size:13px;line-height:1.6}
   .card{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px;position:relative;scroll-snap-align:start;scroll-snap-stop:always;min-height:var(--cardH,auto)}
   .card-progress{position:sticky;top:0;z-index:3;text-align:center;font-size:11px;color:var(--muted);background:var(--panel);padding:4px 0 8px;margin:-12px -14px 6px;border-bottom:1px solid var(--line)}
@@ -442,12 +442,16 @@ document.getElementById('saveCard').onclick=saveCardHandler;
 function goCard(delta){
   const list=document.getElementById('list');
   const cardsEl=[...list.querySelectorAll('.card')];
-  if(!cardsEl.length) return;
+  if(cardsEl.length<2) return;
   const listTop=list.getBoundingClientRect().top;
   let idx=0,best=Infinity;
   cardsEl.forEach((el,i)=>{ const d=Math.abs(el.getBoundingClientRect().top-listTop); if(d<best){best=d;idx=i;} });
   const target=Math.max(0,Math.min(cardsEl.length-1,idx+delta));
-  cardsEl[target].scrollIntoView({behavior:'smooth',block:'start'});
+  const top=list.scrollTop + (cardsEl[target].getBoundingClientRect().top - listTop);
+  // temporarily lift scroll-snap so the programmatic jump isn't blocked, then restore it
+  list.style.scrollSnapType='none';
+  list.scrollTop=top;
+  setTimeout(()=>{ list.style.scrollSnapType='y mandatory'; }, 60);
 }
 document.getElementById('prevCard').onclick=()=>goCard(-1);
 document.getElementById('nextCard').onclick=()=>goCard(1);
