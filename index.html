@@ -53,7 +53,12 @@
   .lv-count{color:var(--muted);font-size:14px;font-weight:500}
   .lv-hint{color:var(--muted);font-size:12px;margin:0 0 16px}
   #venueTable{width:100%;border-collapse:collapse;font-size:14px}
-  #venueTable th{text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px;padding:8px 10px;border-bottom:1px solid var(--line)}
+  #venueTable th{text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px;padding:8px 10px;border-bottom:1px solid var(--line);cursor:pointer;user-select:none}
+  #venueTable th:hover{color:var(--text)}
+  #venueTable th.sort-active{color:var(--accent)}
+  #venueTable th::after{content:'';display:inline-block;margin-left:4px;font-size:10px}
+  #venueTable th.sort-asc::after{content:'▲'}
+  #venueTable th.sort-desc::after{content:'▼'}
   #venueTable td{padding:12px 10px;border-bottom:1px solid var(--line)}
   #venueTable tbody tr{cursor:pointer}
   #venueTable tbody tr:hover{background:var(--panel2)}
@@ -150,7 +155,7 @@
     <h2>All places <span id="countList" class="lv-count"></span></h2>
     <p class="lv-hint">Tap any row to open it for editing.</p>
     <table id="venueTable">
-      <thead><tr><th>#</th><th>City</th><th>Country</th><th>When</th><th>Status</th></tr></thead>
+      <thead><tr><th data-sort="number">#</th><th data-sort="city">City</th><th data-sort="country">Country</th><th data-sort="when">When</th><th data-sort="status">Status</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
@@ -223,6 +228,7 @@ let filter = 'all';
 let pendingPhotoFile = null;
 const markers = {};
 const LS_CACHE = 'travelCache';
+let tableSort = {column: 'number', direction: 'asc'}; // Track table sort state
 
 /* ------------------------------------------------------------------ */
 /*  Map                                                                */
@@ -314,6 +320,36 @@ async function deleteCard(id){
 /* ------------------------------------------------------------------ */
 function nextNumber(){ return cards.length?Math.max(...cards.map(c=>c.number||0))+1:1; }
 
+// Convert month name to number (January=1, etc.)
+function monthToNumber(month){
+  const months={January:1,February:2,March:3,April:4,May:5,June:6,July:7,August:8,September:9,October:10,November:11,December:12};
+  return months[month]||0;
+}
+
+// Sort table data based on sort state
+function sortTableData(shown){
+  const col=tableSort.column;
+  const dir=tableSort.direction==='asc'?1:-1;
+  const sorted=[...shown];
+  sorted.sort((a,b)=>{
+    let aVal,bVal;
+    if(col==='when'){
+      // Sort by year first, then month
+      const aYear=parseInt(a.year)||0;
+      const bYear=parseInt(b.year)||0;
+      if(aYear!==bYear) return (aYear-bYear)*dir;
+      const aMonth=monthToNumber(a.month);
+      const bMonth=monthToNumber(b.month);
+      return (aMonth-bMonth)*dir;
+    }else if(col==='number'){ aVal=a.number||0; bVal=b.number||0; return (aVal-bVal)*dir; }
+    else if(col==='city'){ aVal=(a.city||'').toLowerCase(); bVal=(b.city||'').toLowerCase(); }
+    else if(col==='country'){ aVal=(a.country||'').toLowerCase(); bVal=(b.country||'').toLowerCase(); }
+    else if(col==='status'){ aVal=a.status||''; bVal=b.status||''; }
+    if(aVal<bVal) return -1*dir; if(aVal>bVal) return 1*dir; return 0;
+  });
+  return sorted;
+}
+
 function render(){
   document.getElementById('count').textContent=cards.length;
   const list=document.getElementById('list');
@@ -365,8 +401,16 @@ function renderTable(shown){
   if(!tbody) return;
   document.getElementById('countList').textContent = '· '+cards.length;
   tbody.innerHTML='';
+  // Update header indicators
+  document.querySelectorAll('#venueTable th').forEach(th=>{
+    th.classList.remove('sort-active','sort-asc','sort-desc');
+    if(th.dataset.sort===tableSort.column){
+      th.classList.add('sort-active',`sort-${tableSort.direction}`);
+    }
+  });
   if(!shown.length){ tbody.innerHTML=`<tr><td colspan="5" style="color:var(--muted);padding:20px 10px">No places yet.</td></tr>`; return; }
-  shown.forEach(c=>{
+  const sorted=sortTableData(shown);
+  sorted.forEach(c=>{
     const when=[c.month,c.year].filter(Boolean).join(' ')||'—';
     const tr=document.createElement('tr');
     tr.dataset.id=c.id;
@@ -522,6 +566,16 @@ document.querySelectorAll('#viewTabs button').forEach(b=>{ b.onclick=()=>switchV
 document.querySelector('#venueTable tbody').addEventListener('click',e=>{
   const tr=e.target.closest('tr'); if(!tr||!tr.dataset.id) return;
   const card=cards.find(c=>c.id===tr.dataset.id); if(card) openCard(card);
+});
+
+// Click table headers to sort
+document.querySelectorAll('#venueTable th[data-sort]').forEach(th=>{
+  th.addEventListener('click',()=>{
+    const col=th.dataset.sort;
+    if(tableSort.column===col){ tableSort.direction=tableSort.direction==='asc'?'desc':'asc'; }
+    else{ tableSort.column=col; tableSort.direction='asc'; }
+    render();
+  });
 });
 // keyboard arrows too (ignored while typing in a field or editing)
 document.addEventListener('keydown',e=>{
