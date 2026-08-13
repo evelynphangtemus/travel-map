@@ -158,7 +158,10 @@
         <h2>All places <span id="countList" class="lv-count"></span></h2>
         <p class="lv-hint">Tap any row to open it for editing.</p>
       </div>
-      <button class="btn sm" id="addBtnList">+ Add place</button>
+      <div style="display:flex;gap:8px;flex-shrink:0">
+        <button class="btn secondary sm" id="renumberBtn" title="Re-sort every place by date and renumber 1..N">&#8645; Renumber by date</button>
+        <button class="btn sm" id="addBtnList">+ Add place</button>
+      </div>
     </div>
     <table id="venueTable">
       <thead><tr><th data-sort="number">#</th><th data-sort="city">City</th><th data-sort="country">Country</th><th data-sort="when">When</th><th data-sort="status">Status</th></tr></thead>
@@ -540,6 +543,30 @@ async function saveCardHandler(){
 /* ------------------------------------------------------------------ */
 document.getElementById('addBtn').onclick=()=>openCard(null);
 document.getElementById('addBtnList').onclick=()=>openCard(null);
+
+// Re-sort every place by date (year, then month) and rewrite numbering 1..N
+async function renumberByDate(){
+  const btn=document.getElementById('renumberBtn');
+  if(!confirm('Re-sort all places by date and renumber them 1 to N?')) return;
+  const label=btn.textContent; btn.disabled=true; btn.textContent='Renumbering...';
+  const res=await sb.from('travel_cards').select('*');
+  if(res.error){ alert('Could not load places: '+res.error.message); btn.disabled=false; btn.textContent=label; return; }
+  const key=c=>(parseInt(c.year)||0)*100+monthToNumber(c.month);
+  const sorted=[...res.data].sort((a,b)=>{ const d=key(a)-key(b); if(d) return d; return (a.city||'').localeCompare(b.city||''); });
+  let changed=0, failed=0;
+  for(let i=0;i<sorted.length;i++){
+    if(sorted[i].number===i+1) continue;
+    const up=await sb.from('travel_cards').update({number:i+1}).eq('id',sorted[i].id);
+    if(up.error) failed++; else changed++;
+    btn.textContent='Renumbering '+(i+1)+'/'+sorted.length;
+  }
+  await loadCards();
+  tableSort={column:'number',direction:'asc'};
+  render();
+  btn.disabled=false; btn.textContent=label;
+  alert('Done. '+sorted.length+' places sorted by date; '+changed+' renumbered'+(failed?', '+failed+' failed':'')+'.');
+}
+document.getElementById('renumberBtn').onclick=renumberByDate;
 document.getElementById('cancelCard').onclick=closeCard;
 document.getElementById('saveCard').onclick=saveCardHandler;
 
