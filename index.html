@@ -112,6 +112,16 @@
   .sync-dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:middle}
   .sync-cloud{background:var(--visited)} .sync-err{background:#ef4444} .sync-wait{background:var(--bucket)}
   .thumb-preview{width:100%;height:120px;object-fit:cover;border-radius:9px;margin-top:6px;display:none}
+  #authGate{position:fixed;inset:0;background:var(--bg);z-index:5000;display:flex;align-items:center;justify-content:center;padding:20px}
+  #authGate.hide{display:none}
+  .gate-card{width:100%;max-width:380px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:26px;text-align:center}
+  .gate-card h1{margin:0 0 6px;font-size:20px}
+  .gate-card p{margin:0 0 18px;font-size:13px;color:var(--muted);line-height:1.6}
+  .gate-card input{margin-bottom:10px;text-align:center}
+  .gate-msg{font-size:12px;margin-top:12px;line-height:1.6;min-height:18px}
+  .gate-msg.err{color:#ef4444}
+  .gate-msg.ok{color:var(--visited)}
+  #whoami{font-size:11px;color:var(--muted)}
   @media(max-width:820px){
     #app{flex-direction:column-reverse}
     #sidebar{width:100%;max-width:100%;height:54vh}
@@ -120,6 +130,15 @@
 </style>
 </head>
 <body>
+<div id="authGate">
+  <div class="gate-card">
+    <h1>&#9992;&#65039; Travel Map</h1>
+    <p>Private to Evelyn &amp; Damian.<br>Enter your email and we&#39;ll send you a sign-in link.</p>
+    <input id="gateEmail" type="email" placeholder="you@example.com" autocomplete="email">
+    <button class="btn" id="gateBtn" style="width:100%">Email me a sign-in link</button>
+    <div class="gate-msg" id="gateMsg"></div>
+  </div>
+</div>
 <div id="viewTabs">
   <button data-view="map" class="active">🗺 Map</button>
   <button data-view="list">📋 List</button>
@@ -129,7 +148,7 @@
   <div id="sidebar">
     <header>
       <h1>✈️ Evelyn &amp; Damian — Travel Map</h1>
-      <p><span id="count">0</span> places</p>
+      <p><span id="count">0</span> places &middot; <span id="whoami"></span> <a href="#" id="signOut" style="color:var(--accent)">Sign out</a></p>
     </header>
     <div class="toolbar">
       <button class="btn sm" id="addBtn">+ Add place</button>
@@ -677,9 +696,39 @@ document.getElementById('cardOverlay').addEventListener('click',e=>{ if(e.target
 /* ------------------------------------------------------------------ */
 /*  Boot                                                               */
 /* ------------------------------------------------------------------ */
-loadCache(); render();       // instant paint from cache
-loadCards();                 // then fetch live
-subscribeRealtime();         // live updates between Evelyn & Damian
+/* ---- Access control: only these accounts may use the app ---- */
+const ALLOWED=['evelyn.phang@temus.com','evelyn.phang@gmail.com','da3ian.tay@gmail.com','damian.tay@ncs.com.sg'];
+let booted=false;
+function gateMsg(t,cls){ const e=document.getElementById('gateMsg'); e.textContent=t; e.className='gate-msg'+(cls?' '+cls:''); }
+function showGate(){ document.getElementById('authGate').classList.remove('hide'); }
+function hideGate(){ document.getElementById('authGate').classList.add('hide'); }
+async function sendLink(){
+  const email=document.getElementById('gateEmail').value.trim().toLowerCase();
+  if(!email){ gateMsg('Please enter your email address.','err'); return; }
+  if(ALLOWED.indexOf(email)===-1){ gateMsg('That email is not authorised for this app.','err'); return; }
+  const btn=document.getElementById('gateBtn'); btn.disabled=true; btn.textContent='Sending...';
+  const res=await sb.auth.signInWithOtp({email:email,options:{emailRedirectTo:location.origin+location.pathname}});
+  btn.disabled=false; btn.textContent='Email me a sign-in link';
+  if(res.error) gateMsg(res.error.message,'err');
+  else gateMsg('Sign-in link sent. Check your inbox (and spam).','ok');
+}
+async function startApp(session){
+  const email=((session&&session.user&&session.user.email)||'').toLowerCase();
+  if(ALLOWED.indexOf(email)===-1){ await sb.auth.signOut(); showGate(); gateMsg('That account is not authorised for this app.','err'); return; }
+  document.getElementById('whoami').textContent=email;
+  hideGate();
+  if(booted) return;
+  booted=true;
+  loadCache(); render();
+  await loadCards();
+  subscribeRealtime();
+  setTimeout(function(){ map.invalidateSize(); },200);
+}
+document.getElementById('gateBtn').onclick=sendLink;
+document.getElementById('gateEmail').addEventListener('keydown',function(e){ if(e.key==='Enter') sendLink(); });
+document.getElementById('signOut').onclick=async function(e){ e.preventDefault(); await sb.auth.signOut(); location.href=location.origin+location.pathname; };
+sb.auth.onAuthStateChange(function(_evt,session){ if(session) startApp(session); else { booted=false; cards=[]; showGate(); } });
+(async function(){ const g=await sb.auth.getSession(); if(g.data.session) startApp(g.data.session); else showGate(); })();
 </script>
 </body>
 </html>
